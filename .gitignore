@@ -1,0 +1,11 @@
+missions/*
+*.pyc
+*.csv
+*.dbf
+*.prj
+*.qpj
+*.shx
+*.shp
+all_missions.py
+mission_query.py
+.~lock*
