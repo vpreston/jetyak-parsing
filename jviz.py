@@ -12,7 +12,8 @@ import seawater.eos80 as gsw
 from mpl_toolkits.basemap import Basemap
 import mpl_toolkits.basemap as mb
 # from matplotlib.mlab import griddata
-from scipy.interpolate import griddata
+from sklearn.gaussian_process import GaussianProcess
+from scipy.interpolate import griddata, Rbf
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 import shapefile
@@ -20,44 +21,67 @@ import GPy
 from shapely.geometry import LineString, Polygon, MultiLineString, Point
 from shapely.ops import linemerge, unary_union, polygonize
 from descartes import PolygonPatch
+from scipy import stats
 
-def compare_samples(jy, geo_epsilon=5.0, depth_epsilon=0.1, save_path=None):
+def compare_samples(jy, target='CH4', geo_epsilon=5.0, depth_epsilon=0.1, save_path=None):
     ''' Create plots that compare bottle samples with JetYak samples '''
     # header in form [('station', 'day', 'bottle_ch4_nM', 'bottle_co2_uatm', 'bottle_depth', 'lat', 'lon',
-                    # 'jy_ch4_ppm', 'jy_ch4_uatm', 'jy_ch4_nm', 'jy_ch4_pstd', 'jy_ch4_ustd', 'jy_ch4_nstd',
+                    # 'jy_ch4_ppm', 'jy_ch4_uatm', 'jy_ch4_nm', jy_ch4_umolkg,
+                    # 'jy_ch4_pstd', 'jy_ch4_ustd', 'jy_ch4_nstd', jy_ch4_umolstd,
                     # 'jy_co2_ppm', 'jy_co2_uatm', 'jy_co2_pstd', 'jy_co2_ustd',
                     # 'salinity', 'temperature', 'depth')]
     avg_samples, all_samples = jy.extract_bottle_locations(geo_epsilon=geo_epsilon, depth_epsilon=depth_epsilon, save_path=save_path)
-    labs = ['JetYak Raw Measurements, ppm', 'JetYak Measurements, uatm', 'JetYak Measurements, nM']
-    labs = ['JetYak Raw Measurements, ppm', 'JetYak Measurements, uatm']
+    
+    station_id = 1
+    if target == 'CH4':
+        labs = ['JetYak Raw Measurements, ppm', 'JetYak Measurements, uatm', 'JetYak Measurements, nM', 'JetYak Measurements, umolkg']
+        bottle_id = 2
+        jy_mid = [7, 8, 9, 10]
+        jy_sid = [11, 12, 13, 14]
+        xlabel = 'CH4 Bottle Measrements, nM'
+    elif target == 'CO2':
+        labs = ['JetYak Raw Measurements, ppm', 'JetYak Measurements, uatm']
+        bottle_id = 3
+        jy_mid = [15, 16]
+        jy_sid = [17, 18]
+        xlabel = 'pCO2 Bottle Measurements, uatm'
 
     title = 'Comparison with GeoEps '+str(geo_epsilon)+'m and DepthEps '+str(depth_epsilon)+'m'
 
-    def make_plot(info, index, ylabel, title):
+    def make_plot(info, bottle_index, mean_index, std_index, xlabel, ylabel, title):
         ''' Method for making a plot from extracted bottle sample data '''
         plt.figure()
         labels = []
         dat_color = ['r', 'g', 'b', 'k', 'm', 'y']
+        jydat = []
+        sampdat = []
         for tup in info:
             if tup[3] == 0 or str(tup[3]) is 'nan':
                 pass
             else:
                 if str(tup[1]) not in labels:
-                    plt.plot(float(tup[3]), tup[index], c=dat_color[len(labels)], marker='o', label=str(tup[1]))
-                    plt.errorbar(float(tup[3]), tup[index], yerr=tup[index+2], c=dat_color[len(labels)])
+                    plt.plot(float(tup[bottle_index]), tup[mean_index], c=dat_color[len(labels)], marker='o', label=str(tup[1]))
+                    plt.errorbar(float(tup[bottle_index]), tup[mean_index], yerr=tup[std_index], c=dat_color[len(labels)])
                     labels.append(str(tup[1]))
                 else:
-                    plt.plot(float(tup[3]), tup[index], c=dat_color[len(labels)-1], marker='o')
-                    plt.errorbar(float(tup[3]), tup[index], yerr=tup[index+2], c=dat_color[len(labels)-1])
-        plt.xlabel('pCO2 Bottle Measurements, uatm')
+                    plt.plot(float(tup[bottle_index]), tup[mean_index], c=dat_color[len(labels)-1], marker='o')
+                    plt.errorbar(float(tup[bottle_index]), tup[mean_index], yerr=tup[std_index], c=dat_color[len(labels)-1])
+                jydat.append(tup[mean_index])
+                sampdat.append(tup[bottle_index])
+
+        slope, intercept, r_value, p_value, std_err = stats.linregress(sampdat,jydat)
+        line = [slope*x+intercept for x in sampdat]
+        print(slope, intercept, r_value, p_value)
+        plt.plot(sampdat, line)
+        plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.title(title)
         plt.legend()
         plt.show()
         plt.close()
 
-    for i in [13, 14]:
-        make_plot(avg_samples, i, labs[i-13], title)
+    for i,j in zip(jy_mid, jy_sid): 
+        make_plot(avg_samples, bottle_id, i, j, xlabel, labs[i-jy_mid[0]], title)
 
 def st_plots(salt, temp, target, target_label, title):
     ''' Casts plots in S-T space '''
@@ -100,10 +124,8 @@ def st_plots(salt, temp, target, target_label, title):
     plt.show()
     plt.close()
 
-def val_depth_cascades(missions, depth_diff=0.5, limit=10.0):
+def val_depth_cascades(missions, depth_diff=0.5, limit=10.0, dates=('28 Jun', '29 Jun', '30 Jun', '01 Jul', '02 Jul', '04 Jul')):
     ''' aggregates data by depth and date '''
-    dates = ['28 Jun', '29 Jun', '30 Jun', '01 Jul', '02 Jul', '04 Jul']
-
     layers = int((limit)/depth_diff)
     fig, ax = plt.subplots()
 
@@ -128,23 +150,29 @@ def val_depth_cascades(missions, depth_diff=0.5, limit=10.0):
     plt.show()
     plt.close()
 
-def filled_contours(mission):
+def filled_contours(mission, region=None, buff=0.001, target='Depth', depth_lim=1.0, vmin=0.0, vmax=30.0):
     ''' Method for making a plot of target data (contours) onto a basemap object '''
-    m = mission[1][(mission[1]['Depth'] < 1.0)]
-    fig = plt.figure()
+    m = mission[(mission['Depth'] < depth_lim) & (mission['Depth'] > 0.1)]
+    fig = plt.figure(figsize=(15,15))
     ax = fig.add_subplot(111)
 
     #get bounding box
-    x_min = np.nanmin(m['Latitude']) - 0.01
-    x_max = np.nanmax(m['Latitude']) + 0.01
-    y_min = np.nanmin(m['Longitude']) - 0.01
-    y_max = np.nanmax(m['Longitude']) + 0.01
+    if region is None:
+        x_min = np.nanmin(m['Latitude']) - buff
+        x_max = np.nanmax(m['Latitude']) + buff
+        y_min = np.nanmin(m['Longitude']) - buff
+        y_max = np.nanmax(m['Longitude']) + buff
+    else:
+        x_min = region[0] - buff
+        x_max = region[1] + buff
+        y_min = region[2] - buff
+        y_max = region[3] + buff
 
     # make the map object
     base = Basemap(llcrnrlon=y_min, llcrnrlat=x_min, urcrnrlon=y_max, urcrnrlat=x_max,
                    resolution='l', projection='cyl')
 
-    base.arcgisimage(service='World_Topo_Map', xpixels=1500, verbose= True)
+    base.arcgisimage(service='World_Topo_Map', xpixels=1500, verbose=False)
     sf = shapefile.Reader('./cb.shp')
     for shape_rec in sf.shapeRecords():
         vertices = []
@@ -162,50 +190,149 @@ def filled_contours(mission):
 
     # make the grid object to project on
     proj_lon, proj_lat = base(*(m['Longitude'].values, m['Latitude'].values))
-    num_cols, num_rows = 100, 100
-    xi = np.linspace(np.nanmin(proj_lon), np.nanmax(proj_lon), num_cols)
-    yi = np.linspace(np.nanmin(proj_lat), np.nanmax(proj_lat), num_rows)
+    num_cols, num_rows = 150, 150
+    xi = np.linspace(y_min, y_max, num_cols)
+    yi = np.linspace(x_min, x_max, num_rows)
     x1, y1 = np.meshgrid(xi, yi)
 
     #interpolate
-    x, y, z = proj_lon, proj_lat, m['CH4_ppm'].values
-    # z1 = griddata((x, y), z, (x1, y1), method='linear', rescale=True)
+    x, y, z = proj_lon, proj_lat, m[target].values
+    z1 = griddata((x, y), z, (x1, y1), method='linear', rescale=True)
 
-    # weighted, _, _ = np.histogram2d(x, y, weights=z, normed=False, bins=100)
-    # count, xedges, yedges = np.histogram2d(x,y,bins=100)
+    # rbf = Rbf(x[0::100], y[0::100], z[0::100], method='linear')
+    # z1 = rbf(x1, y1) + np.mean(m[target].values)
+
+    # gp = GaussianProcess()#theta0=0.1, thetaL=.001, thetaU=1., nugget=0.01)
+    # gp.fit(X=np.column_stack([x[0::100],y[0::100]]), y=z[0::100])
+    # z1 = gp.predict(np.column_stack([x1.flatten(), y1.flatten()])).reshape(x1.shape)
+
+    # weighted, _, _ = np.histogram2d(x, y, weights=z, normed=False, bins=1000)
+    # count, xedges, yedges = np.histogram2d(x,y,bins=1000)
     # z1 = weighted/count
     
     # xcenters = (xedges[:-1] + xedges[1:]) / 2
     # ycenters = (yedges[:-1] + yedges[1:]) / 2
     # x1, y1 = np.meshgrid(xcenters, ycenters)
 
+    # plt.pcolormesh(x, y, z, cmap='RdBu', vmin=vmin, vmax=vmax)
+
     # con = base.contourf(x1, y1, z1.T, cmap=plt.cm.bwr)
 
-    xvals = np.array([[m, n] for m, n in zip(x, y)])
-    zvals = np.reshape(np.array(z), (len(z), 1))
+    # xvals = np.array([[q, r] for q, r in zip(x, y)])
+    # zvals = np.reshape(np.array(z), (len(z), 1))
 
-    # kern = GPy.kern.sde_Matern52(input_dim=2, lengthscale=0.001, variance=np.var(z))
-    kern = GPy.kern.sde_Exponential(input_dim=2, lengthscale=0.001, variance=np.var(z))
-    # kern = GPy.kern.sde_RatQuad(input_dim=2, lengthscale=0.001, variance=np.var(z))
+    # # kern = GPy.kern.sde_Matern52(input_dim=2, lengthscale=1.0, variance=np.var(z))
+    # # kern = GPy.kern.sde_Exponential(input_dim=2, lengthscale=10.0, variance=np.var(z))
+    # kern = GPy.kern.sde_RBF(input_dim=2, lengthscale=1.0, variance=np.var(z))
+    # # kern = GPy.kern.sde_RatQuad(input_dim=2, lengthscale=0.001, variance=np.var(z))
 
-    mod = GPy.models.GPRegression(xvals[0::5], zvals[0::5], kern)
-    print 'initializing'
-    mod.initialize_parameter()
-    mod.optimize_restarts(num_restarts=2, messages=True, robust=True)
-    print kern
+    # mod = GPy.models.GPRegression(xvals[0::5], zvals[0::5], kern)
+    # print 'initializing'
+    # mod.initialize_parameter()
+    # mod.optimize_restarts(num_restarts=2, messages=True, robust=True)
+    # print kern
 
-    data = np.vstack([x1.ravel(), y1.ravel()]).T
-    obs, var = mod.predict(data, full_cov=False, include_likelihood=True)
-
-    # con = base.contourf(x1, y1, z1, zorder=4, alpha=0.6, cmap='RdPu')
-    con = base.contourf(x1, y1, obs.reshape(x1.shape), cmap = 'viridis', levels=np.linspace(np.nanmin(obs), np.nanmax(obs), 15))
+    # data = np.vstack([x1.ravel(), y1.ravel()]).T
+    # observations, var = mod.predict(data, full_cov=False, include_likelihood=True)
+    # observations = observations.reshape(x1.shape) + np.mean(m[target].values)
+    # obs = observations
+    con = base.contourf(x1, y1, z1, zorder=10, alpha=1.0, cmap='viridis', levels=np.linspace(vmin, vmax, 15))
+    # # con = base.contourf(x1, y1, obs, cmap = 'viridis', levels=np.linspace(np.nanmin(obs), np.nanmax(obs), 15))
     for contour in con.collections:
         contour.set_clip_path(clip)
 
-    # base.scatter(x, y, c=z, cmap='viridis', vmin=np.nanmin(obs), vmax=np.nanmax(obs), edgecolors='face', linewidths=0)
+    # base.scatter(x, y, c=z, cmap='viridis', vmin=np.nanmin(z1), vmax=np.nanmax(z1), edgecolors='face', linewidths=0)
 
     cbar = plt.colorbar(con)
-    cbar.set_label('CH4 (ppm)')
+    cbar.set_label(target, fontsize=30)
+    cbar.ax.tick_params(labelsize=20)
+    # base.scatter(x,y,zorder=5,s=0.1)
+    plt.show()
+    plt.close()
+
+def partial_contours(mission, region, target='Depth', depth_lim=1.0, vmin=0.0, vmax=30.0):
+    ''' Method for making a plot of target data (contours) onto a basemap object '''
+
+    # make the map object
+    #throw away junk and values out of range
+    m = mission[(mission['Depth'] < depth_lim) & (mission['Depth'] > 0.25)]
+
+    x_min = np.nanmin(m['Latitude']) - 0.001
+    x_max = np.nanmax(m['Latitude']) + 0.001
+    y_min = np.nanmin(m['Longitude']) - 0.001
+    y_max = np.nanmax(m['Longitude']) + 0.001
+
+    base = Basemap(llcrnrlon=y_min, llcrnrlat=x_min, urcrnrlon=y_max, urcrnrlat=x_max,
+                   resolution='l', projection='cyl')
+
+    allx, ally = base(*(m['Longitude'].values, m['Latitude'].values))
+    m.loc[:,'proj_lon'] = allx
+    m.loc[:,'proj_lat'] = ally
+
+    # make the grid object to project on for each region
+    buff = 0.0003
+    for r in region:
+        tmp = m[(m['proj_lat'] >= r[0]-buff) & (m['proj_lat'] <= r[1]+buff) & (m['proj_lon'] >= r[2]-buff) & (m['proj_lon'] <= r[3]+buff)]
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        num_cols, num_rows = 500, 500
+        xi = np.linspace(r[2]-buff, r[3]+buff, num_cols)
+        yi = np.linspace(r[0]-buff, r[1]+buff, num_rows)
+        x1, y1 = np.meshgrid(xi, yi)
+
+        #interpolate
+        x, y, z = tmp['proj_lon'].values, tmp['proj_lat'].values, tmp[target].values
+        z1 = griddata((x, y), z, (x1, y1), method='linear', rescale=True) 
+
+        base.contourf(x1, y1, z1, zorder=4, alpha=1.0, cmap='viridis', levels=np.linspace(vmin, vmax, 15))
+        cbar = plt.colorbar()
+        cbar.set_label(target)
+        cbar.ax.tick_params(labelsize=40) 
+        base.scatter(tmp['proj_lon'].values, tmp['proj_lat'].values, zorder=5,s=0.1)
+        ax.set_xlim([r[2]-buff, r[3]+buff])
+        ax.set_ylim([r[0]-buff, r[1]+buff])
+        plt.show()
+        plt.close()
+
+def colored_scatter(mission, target='Depth', depth_lim=1.0, vmin=0.0, vmax=30.0):
+    ''' Method for making a plot of target data (contours) onto a basemap object '''
+    m = mission[(mission['Depth'] < depth_lim) & (mission['Depth'] > 0.25) & (mission['Salinity'] > 25.)]
+    thin_line = mission[(mission['Depth'] >= depth_lim) & (mission['Salinity'] > 25.)]
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    #get bounding box
+    x_min = np.nanmin(m['Latitude']) - 0.001
+    x_max = np.nanmax(m['Latitude']) + 0.001
+    y_min = np.nanmin(m['Longitude']) - 0.001
+    y_max = np.nanmax(m['Longitude']) + 0.001
+
+    print(x_min, x_max, y_min, y_max)
+    # make the map object
+    base = Basemap(llcrnrlon=y_min, llcrnrlat=x_min, urcrnrlon=y_max, urcrnrlat=x_max,
+                   resolution='l', projection='cyl')
+
+    # base.arcgisimage(service='World_Topo_Map', xpixels=1500, verbose= True)
+    proj_lon, proj_lat = base(*(m['Longitude'].values, m['Latitude'].values))
+    path_lon, path_lat = base(*(thin_line['Longitude'].values, thin_line['Latitude'].values))
+
+    # np.savetxt('0913.txt', np.array([proj_lon, proj_lat]).T)
+    plume_lon, plume_lat = np.loadtxt('missions/falkor/updated_plumes.txt', delimiter=',', unpack=True)
+
+    scat = base.scatter(proj_lon, proj_lat, zorder=5, s=30.0, alpha=0.5, c=m[target].values, cmap='coolwarm', lw=0, vmin=vmin, vmax=vmax)
+    base.scatter(path_lon, path_lat, zorder=5, s=0.3, alpha=0.3, c="0.5")
+    base.scatter(-1*plume_lon, plume_lat, s=100, c='r', lw=0, zorder=6)
+    #9/11
+    # casts = [(44.2029833, -124.8509833),
+    #          (44.3626167, -124.1628333),
+    #          (44.3702167, -124.1846000)]
+
+    #9/16
+    # casts = [(44.4563167, -124.2660000)]
+
+    cbar = plt.colorbar(scat)
+    # base.scatter([x[1] for x in casts], [x[0] for x in casts], c='r', s=100., lw=0)
     plt.show()
     plt.close()
 
@@ -252,3 +379,4 @@ def regional_comparison(missions, regions, depth_diff=0.5, limit=10.0):
 def add_poly(df, polygon):
     df.loc[:, 'in_poly'] = df.apply(lambda x: polygon.contains(Point(x['Longitude'], x['Latitude'])),axis=1)
     return df
+

@@ -56,7 +56,7 @@ class Sensor(object):
 class GGA(Sensor):
     '''Class which specifically handles processing and reporting GGA data'''
 
-    def set_characteristics(self, offset=-0.0034, effs=(0.03, 0.7), peq=495.):
+    def set_characteristics(self, offset=-0.0034, effs=(1.0, 0.7), peq=495.):
         ''' Allows access to default extraction information '''
         self.offset = offset
         self.effs = effs
@@ -85,12 +85,12 @@ class GGA(Sensor):
         self.df = self.df.drop(['[CH4]_ppm', '[CO2]_ppm'], axis=1)
 
         # perform gas conversions
-        self.convert_CH4(eff=self.effs[0], peq=self.peq)
-        self.convert_CO2(eff=self.effs[1], peq=self.peq)
+        # self.convert_CH4(eff=self.effs[0], peq=self.peq)
+        # self.convert_CO2(eff=self.effs[1], peq=self.peq)
 
         # trim up
         self.trim_up()
-        self.df = self.df.drop(self.df[self.df['CH4_uatm'] <= 0.0].index) #remove obvious outliers
+        self.df = self.df.drop(self.df[self.df['CH4_ppm'] <= 0.0].index) #remove obvious outliers
         self.df = self.df.drop(self.df[self.df['CH4_ppm'] >= 100.0].index) #remove obvious outliers
 
     def apply_time(self, offset=0.0014):
@@ -112,17 +112,15 @@ class GGA(Sensor):
         data.loc[:, 'Julian_Date'] = data['Julian_Date_cor']
         self.df = data
 
-    def convert_CH4(self, eff=0.03, peq=495.):
+    def convert_CH4(self, eff=0.03, peq=495., gppm=1.86):
         ''' Method to convert the raw ppm measurements from the GGA to compensated
         uatm units '''
-        gppm = 1.834 #hardcoded constant
         ui = peq * gppm / 1000.
         self.df.loc[:, 'CH4_uatm'] = self.df.apply(lambda x: ((x['CH4_ppm'] * peq / 1000. - ui) / eff + ui), axis=1)
 
-    def convert_CO2(self, eff=0.70, peq=495.):
+    def convert_CO2(self, eff=0.70, peq=495., gppm=0.):
         ''' Method to convert the raw ppm measurements from the GGA to compensated
         uatm units '''
-        gppm = 0.0 #hardcoded constant
         ui = peq * gppm / 1000.
         self.df.loc[:, 'CO2_uatm'] = self.df.apply(lambda x: ((x['CO2_ppm'] * peq / 1000. - ui) / eff + ui), axis=1)
 
@@ -203,8 +201,37 @@ class AirMar(Sensor):
         self.df = data
 
 class Optode(Sensor):
-    #TODO
-    pass
+    '''Class which specifically handles processing and reporting Airmar weather station data'''
+    def set_characteristics(self, offset=-0.0034):
+        ''' Allows access to default extraction information '''
+        self.offset = offset
+
+    def make_dataframe(self, header=0):
+        ''' Construct a compiled dataframe for the sensor files provided '''
+        df = pd.read_table(self.source_path[0], delimiter=',', header=header, engine='c')
+        for m in self.source_path[1:]:
+            temp =  pd.read_table(m, delimiter=',', header=header, engine='c')
+            df = df.append(temp, ignore_index=True)
+        self.df = df
+
+    def clean_optode(self):
+        ''' Method to construct the AirMar dataframe '''
+
+        #make the initial frame, creating the df object
+        self.make_dataframe(header=0)
+
+        #create the time objects
+        self.apply_time()
+
+        #trim up
+        self.trim_up()
+
+    def apply_time(self):
+        ''' Create time objects '''
+        data = copy.copy(self.df)
+        data.loc[:,'posixtime'] = data.apply(lambda x : x['posixtime']-14700.0, axis=1)
+        data.loc[:,'Julian_Date'] = data.apply(lambda x : x.posixtime / 86400.0 + self.offset - 0.0416600001, axis=1)
+        self.df = data
 
 def calculate_julian_day(y, mo, d, h, mi, s):
     '''
@@ -254,12 +281,14 @@ def make_global_time(df):
 
 def dms2dd(info):
     ''' method to convert between DMS to Decimal degrees'''
-    if float(info) > 10000 or str(info)[0] is '0':
+    if (float(info) > 10000 or str(info)[0] is '0') and len(info) > 1:
         degrees = float(str(info)[0:3])
         minutes = float(str(info)[3:]) / 60.0
         dd = degrees + minutes
-    else:
+    elif len(info) > 1:
         degrees = float(str(info)[0:2])
         minutes = float(str(info)[2:]) / 60.0
         dd = degrees + minutes
+    else:
+        return 0
     return dd
