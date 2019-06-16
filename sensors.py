@@ -11,6 +11,8 @@ Maintainer: vpreston-at-{whoi, mit}-dot-edu
 import copy
 import pandas as pd
 import numpy as np
+import gpxpy
+import time
 
 class Sensor(object):
     '''Parent class for all sensors, with shared methods'''
@@ -231,6 +233,82 @@ class Optode(Sensor):
         data = copy.copy(self.df)
         data.loc[:,'posixtime'] = data.apply(lambda x : x['posixtime']-14700.0, axis=1)
         data.loc[:,'Julian_Date'] = data.apply(lambda x : x.posixtime / 86400.0 + self.offset - 0.0416600001, axis=1)
+        self.df = data
+
+class MiniOptode(Sensor):
+    '''Class which specifically handles processing and reporting of MiniDot Optoode'''
+    def set_characteristics(self, offset=-0.0034):
+        ''' Allows access to default extraction information '''
+        self.offset = offset
+
+    def make_dataframe(self, header=0):
+        ''' Construct a compiled dataframe for the sensor files provided '''
+        df = pd.read_table(self.source_path[0], delimiter=',', header=header, engine='c')
+        df.columns = ['Time', 'Battery Voltage', 'Temperature', 'DO', 'Q']
+        for m in self.source_path[1:]:
+            temp =  pd.read_table(m, delimiter=',', header=header, engine='c')
+            temp.columns = ['Time', 'Battery Voltage', 'Temperature', 'DO', 'Q']
+            df = df.append(temp, ignore_index=True)
+        self.df = df
+
+    def clean_mini_optode(self):
+        ''' Method to construct the MiniDot dataframe '''
+
+        #make the initial frame, creating the df object
+        self.make_dataframe(header=2)
+
+        #create the time objects
+        self.apply_time()
+
+        #trim up
+        self.trim_up()
+
+    def apply_time(self):
+        ''' Create time objects '''
+        data = copy.copy(self.df)
+        times = [time.gmtime(x) for x in data['Time'].values]
+        data.loc[:, 'Year'] = [x.tm_year for x in times]
+        data.loc[:, 'Month'] = [x.tm_mon for x in times]
+        data.loc[:, 'Day'] = [x.tm_mday for x in times]
+        data.loc[:, 'Hour'] = [x.tm_hour for x in times]
+        data.loc[:, 'Minute'] = [x.tm_min for x in times]
+        data.loc[:, 'Second'] = [x.tm_sec for x in times]
+        data = make_global_time(data)
+        self.df = data
+
+class PhoneGPS(Sensor):
+    '''Class which specifically handles gpx reports froma handheld phone'''
+
+    def make_dataframe(self, header=0):
+        '''Construct a dataframe from the gpx data'''
+        df = gpxpy.parse(open(self.source_path[0]))
+        track = df.tracks[0]
+        segment = track.segments[0]
+        self.waypoints = df.waypoints
+
+        data = []
+        for i, point in enumerate(segment.points):
+            data.append([point.longitude, point.latitude, point.elevation, point.time, segment.get_speed(i)])
+
+        pdf = pd.DataFrame(data, columns=['Longitude', 'Latitude', 'Elevation', 'Time', 'Speed'])
+        self.df = pdf
+
+    def clean_phone_gps(self):
+        '''Method to construct the phone df object'''
+        self.make_dataframe(header=0)
+        self.apply_time()
+        self.trim_up()
+
+    def apply_time(self):
+        '''Create time objects'''
+        data = copy.copy(self.df)
+        data.loc[:, 'Year'] = data.apply(lambda x: x['Time'].year, axis=1)
+        data.loc[:, 'Month'] = data.apply(lambda x: x['Time'].month, axis=1)
+        data.loc[:, 'Day'] = data.apply(lambda x: x['Time'].day, axis=1)
+        data.loc[:, 'Hour'] = data.apply(lambda x: x['Time'].hour, axis=1)
+        data.loc[:, 'Minute'] = data.apply(lambda x: x['Time'].minute, axis=1)
+        data.loc[:, 'Second'] = data.apply(lambda x: x['Time'].second, axis=1)
+        data = make_global_time(data)
         self.df = data
 
 def calculate_julian_day(y, mo, d, h, mi, s):

@@ -12,6 +12,7 @@ import numpy as np
 import copy
 import utm
 from gasex import sol
+import time
 
 class JetYak(object):
     ''' Class which allows for sensor interfaces and basic queries to be made about a jetyak mission '''
@@ -21,8 +22,10 @@ class JetYak(object):
         self.ctd = None
         self.suna = None
         self.optode = None
+        self.mini_optode = None
         self.gga = None
         self.airmar = None
+        self.phone_gps = None
         self.bottle_samples = None
         self.mission = []
         self.bounds = bounds
@@ -52,6 +55,13 @@ class JetYak(object):
             self.airmar.clean_airmar()
             self.sensors.append(self.airmar)
             self.sensor_names.append('airmar')
+        elif 'mini_optode' in sensor:
+            print 'Attaching Mini_Optode'
+            self.mini_optode = sensors.MiniOptode(dirs, self.bounds, self.trim_vals)
+            self.mini_optode.set_characteristics(offset=self.offset)
+            self.mini_optode.clean_mini_optode()
+            self.sensors.append(self.mini_optode)
+            self.sensor_names.append('mini_optode')
         elif 'optode' in sensor:
             print 'Attaching Optode'
             self.optode = sensors.Optode(dirs, self.bounds, self.trim_vals)
@@ -59,8 +69,15 @@ class JetYak(object):
             self.optode.clean_optode()
             self.sensors.append(self.optode)
             self.sensor_names.append('optode')
+        elif 'phone_gps' in sensor:
+            print 'Attaching Phone GPS'
+            self.phone_gps = sensors.PhoneGPS(dirs, self.bounds, self.trim_vals)
+            # self.optode.set_characteristics(offset=self.offset)
+            self.phone_gps.clean_phone_gps()
+            self.sensors.append(self.phone_gps)
+            self.sensor_names.append('phone_gps')
         else:
-            print 'Only supporting CTD, GGA, Optode, and Airmar inputs \
+            print 'Only supporting CTD, GGA, Optode, Mini-Optode, Airmar, and Phone GPS inputs \
                        at this time.'
 
     def create_mission(self, args):
@@ -165,7 +182,7 @@ class JetYak(object):
 
 
     def match_bottles(self, cdf, geo_epsilon=10.0, depth_epsilon=0.1):
-        '''Method to match the collapsed bottle samples to JetYak obseervations'''
+        '''Method to match the collapsed bottle samples to JetYak observations'''
         match_df = copy.copy(cdf)
 
         #there should be no duplicates, so let's just run through the dataframe
@@ -386,9 +403,9 @@ def convert_to_utm(coord):
         return 0., 0.
 
 
-def apply_efficiency(x, eff=0.15, gppm=1.86):
+def apply_efficiency(x, eff=0.15, gppm=1.86, peq=495.):
     '''Method for applying the extraction efficiency'''
-    return (x-gppm)/eff + gppm
+    return ((x-gppm)/eff + gppm)*(peq/1000.)
 
 def convert_CH4(x, eff=0.035, peq=495., gppm=1.86):
     ''' Method to convert the raw ppm measurements from the GGA to compensated
