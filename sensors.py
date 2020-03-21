@@ -22,6 +22,7 @@ class Sensor(object):
         self.trim_vals = trim_vals
         self.df = None
         self.offset = None
+        self.hour_offset = None
         self.effs = None
         self.peq = None
 
@@ -58,11 +59,13 @@ class Sensor(object):
 class GGA(Sensor):
     '''Class which specifically handles processing and reporting GGA data'''
 
-    def set_characteristics(self, offset=-0.0034, effs=(1.0, 0.7), peq=495.):
+    def set_characteristics(self, hour_offset=1.0, offset=-0.0034, effs=(1.0, 0.7), peq=495.):
         ''' Allows access to default extraction information '''
         self.offset = offset
         self.effs = effs
         self.peq = peq
+        #NOTE! Running wareham data this should be 0.0
+        self.hour_offset = hour_offset
 
     def clean_gga(self):
         ''' Method to construct the GGA dataframe, with all of the peculiarities of the
@@ -79,7 +82,7 @@ class GGA(Sensor):
         self.make_dataframe(header=1)
 
         # create the time objects
-        self.apply_time(self.offset)
+        self.apply_time(self.offset, self.hour_offset)
 
         # clean up columns
         self.df.loc[:, 'CH4_ppm'] = self.df.apply(lambda x: x['[CH4]_ppm'], axis=1)
@@ -95,14 +98,14 @@ class GGA(Sensor):
         self.df = self.df.drop(self.df[self.df['CH4_ppm'] <= 0.0].index) #remove obvious outliers
         self.df = self.df.drop(self.df[self.df['CH4_ppm'] >= 100.0].index) #remove obvious outliers
 
-    def apply_time(self, offset=0.0014):
+    def apply_time(self, offset=0.0014, hour_offset=1.0):
         ''' Method to extract Julian Date and parse the time structure in the GGA file '''
         data = copy.copy(self.df)
         data.loc[:, 'Year'] = data['Time'].str.split(' ').str.get(2).str.split('/').str.get(2).astype('int')
         data.loc[:, 'Month'] = data['Time'].str.split(' ').str.get(2).str.split('/').str.get(0).astype('int')
         data.loc[:, 'Day'] = data['Time'].str.split(' ').str.get(2).str.split('/').str.get(1).astype('int')
         data.loc[:, 'Minute'] = data['Time'].str.split(' ').str.get(3).str.split(':').str.get(1).astype('float')
-        data.loc[:, 'Hour'] = data['Time'].str.split(' ').str.get(3).str.split(':').str.get(0).astype('float')-1.00
+        data.loc[:, 'Hour'] = data['Time'].str.split(' ').str.get(3).str.split(':').str.get(0).astype('float')-hour_offset
         data.loc[:, 'Second'] = data['Time'].str.split(' ').str.get(3).str.split(':').str.get(2).astype('float')
         data.loc[:, 'Hour'] = data.apply((lambda x: float(x['Hour'] + int(x['Minute']/60.0))), axis=1)
         data.loc[:, 'Minute'] = data.apply((lambda x: float(x['Minute']%60)), axis=1)
@@ -154,9 +157,33 @@ class CTD(Sensor):
         data = seconds_elapsed(data)
         self.df = data
 
-class Suna(Sensor):
-    #TODO
-    pass
+class Sonde(Sensor):
+    '''Class which specifically handles processing and reporting Sonde data'''
+    def clean_sonde(self):
+        '''Method to construct the Sonde dataframe'''
+
+        #make the inial frame, creating the df object
+        self.make_dataframe(header=0)
+
+        #create the time objects
+        self.apply_time()
+
+        #trim up
+        self.trim_up()
+
+    def apply_time(self):
+        ''' Create time objects'''
+        data = copy.copy(self.df)
+        data.loc[:, 'Year'] = data['DateTime'].str.strip("'").str.split(' ').str.get(0).str.split('/').str.get(2).astype('int')
+        data.loc[:, 'Month'] = data['DateTime'].str.strip("'").str.split(' ').str.get(0).str.split('/').str.get(0).astype('int')
+        data.loc[:, 'Day'] = data['DateTime'].str.strip("'").str.split(' ').str.get(0).str.split('/').str.get(1).astype('int')
+        data.loc[:, 'Hour'] = data['DateTime'].str.strip("'").str.split(' ').str.get(1).str.split(':').str.get(0).astype('float')+4.01
+        data.loc[:, 'Minute'] = data['DateTime'].str.strip("'").str.split(' ').str.get(1).str.split(':').str.get(1).astype('float')
+        start_hour = data['Hour'].values[0]
+        start_minute = data['Minute'].values[0]
+        data.loc[:, 'Second'] = data.apply(lambda x: float(x['Seconds']-(x['Minute']-start_minute)*60.-(x['Hour']-start_hour)*60.*60.), axis=1)
+        data = make_global_time(data)
+        self.df = data
 
 class AirMar(Sensor):
     '''Class which specifically handles processing and reporting Airmar weather station data'''
@@ -308,6 +335,38 @@ class PhoneGPS(Sensor):
         data.loc[:, 'Hour'] = data.apply(lambda x: x['Time'].hour, axis=1)
         data.loc[:, 'Minute'] = data.apply(lambda x: x['Time'].minute, axis=1)
         data.loc[:, 'Second'] = data.apply(lambda x: x['Time'].second, axis=1)
+        data = make_global_time(data)
+        self.df = data
+
+class Pixhawk(Sensor):
+    ''' Object for the pixhawk GPS settings'''
+    def make_dataframe(self, header=0):
+        '''make the dataframe for the pixhawk'''
+        pix_parse = gpxpy.parse(open(self.source_path[0]))
+        track = pix_parse.tracks[0]
+        segment = track.segments[0]
+
+        data = []
+        for i, point in enumerate(segment.points):
+            data.append([point.longitude, point.latitude, point.elevation, point.time, segment.get_speed(i)])
+        df = pd.DataFrame(data, columns=['Longitude', 'Latitude', 'Elevation', 'Time', 'Speed'])
+        self.df = df
+
+    def clean_pixhawk(self):
+        '''Perform the cleaning'''
+        self.make_dataframe(header=0)
+        self.apply_time()
+        self.trim_up()
+
+    def apply_time(self):
+        '''Create time objects'''
+        data = copy.copy(self.df)
+        data.loc[:, 'Year'] = data.apply(lambda x: int(x['Time'].year), axis=1)
+        data.loc[:, 'Month'] = data.apply(lambda x: int(x['Time'].month), axis=1)
+        data.loc[:, 'Day'] = data.apply(lambda x: int(x['Time'].day), axis=1)
+        data.loc[:, 'Hour'] = data.apply(lambda x: float(x['Time'].hour+4.), axis=1)
+        data.loc[:, 'Minute'] = data.apply(lambda x: float(x['Time'].minute), axis=1)
+        data.loc[:, 'Second'] = data.apply(lambda x: float(x['Time'].second), axis=1)
         data = make_global_time(data)
         self.df = data
 

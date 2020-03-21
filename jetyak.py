@@ -23,6 +23,8 @@ class JetYak(object):
         self.suna = None
         self.optode = None
         self.mini_optode = None
+        self.sonde = None
+        self.pixhawk = None
         self.gga = None
         self.airmar = None
         self.phone_gps = None
@@ -34,6 +36,8 @@ class JetYak(object):
         self.sensor_names = []
         if args is not None:
             self.offset = args[0]
+            if len(args) > 1:
+                self.gga_offset = args[1]
 
     def attach_sensor(self, sensor, dirs):
         ''' Method to add sensors for parsing and cleaning on the Jetyak '''
@@ -46,6 +50,7 @@ class JetYak(object):
         elif 'gga' in sensor:
             print 'Attaching GGA'
             self.gga = sensors.GGA(dirs, self.bounds, self.trim_vals)
+            self.gga.set_characteristics(offset=self.gga_offset)
             self.gga.clean_gga()
             self.sensors.append(self.gga)
             self.sensor_names.append('gga')
@@ -55,6 +60,12 @@ class JetYak(object):
             self.airmar.clean_airmar()
             self.sensors.append(self.airmar)
             self.sensor_names.append('airmar')
+        elif 'pixhawk' in sensor:
+            print 'Attaching Pixhawk'
+            self.pixhawk = sensors.Pixhawk(dirs, self.bounds, self.trim_vals)
+            self.pixhawk.clean_pixhawk()
+            self.sensors.append(self.pixhawk)
+            self.sensor_names.append('pixhawk')
         elif 'mini_optode' in sensor:
             print 'Attaching Mini_Optode'
             self.mini_optode = sensors.MiniOptode(dirs, self.bounds, self.trim_vals)
@@ -76,6 +87,12 @@ class JetYak(object):
             self.phone_gps.clean_phone_gps()
             self.sensors.append(self.phone_gps)
             self.sensor_names.append('phone_gps')
+        elif 'sonde' in sensor:
+            print 'Attaching Sonde'
+            self.sonde = sensors.Sonde(dirs, self.bounds, self.trim_vals)
+            self.sonde.clean_sonde()
+            self.sensors.append(self.sonde)
+            self.sensor_names.append('sonde')
         else:
             print 'Only supporting CTD, GGA, Optode, Mini-Optode, Airmar, and Phone GPS inputs \
                        at this time.'
@@ -346,8 +363,15 @@ def strip_mission(df, geo_frame='airmar', geo_labels=('lon_mod', 'lat_mod'), met
     ''' Creates simple frame of the relevant data of interest '''
     print meth_eff
     new_frame = pd.DataFrame()
+    new_frame.loc[:, 'Year'] = df['ctd']['Year']
+    new_frame.loc[:, 'Month'] = df['ctd']['Month']
+    new_frame.loc[:, 'Day'] = df['ctd']['Day']
+    new_frame.loc[:, 'Hour'] = df['ctd']['Hour']
+    new_frame.loc[:, 'Minute'] = df['ctd']['Minute']
+    new_frame.loc[:, 'Second'] = df['ctd']['Second']
+
     new_frame.loc[:, 'CO2_ppm'] = df['gga']['CO2_ppm']
-    new_frame.loc[:, 'CO2_uatm'] = df.apply(lambda x: apply_efficiency(x['gga']['CO2_ppm'], eff=carb_eff, gppm=0.), axis=1)
+    new_frame.loc[:, 'CO2_uatm'] = df.apply(lambda x: apply_efficiency(x['gga']['CO2_ppm'], eff=carb_eff, gppm=411.), axis=1)
 
     new_frame.loc[:, 'CH4_ppm'] = df['gga']['CH4_ppm']
     new_frame.loc[:, 'CH4_uatm'] = df.apply(lambda x: apply_efficiency(x['gga']['CH4_ppm'], eff=meth_eff), axis=1)
@@ -355,12 +379,12 @@ def strip_mission(df, geo_frame='airmar', geo_labels=('lon_mod', 'lat_mod'), met
     new_frame.loc[:, 'CH4_nM'] = df.apply(lambda x: determine_methane(apply_efficiency(x['gga']['CH4_ppm'], eff=meth_eff)*1e-6,
                                                                       x['ctd']['Salinity'],
                                                                       x['ctd']['Temperature'])*1e6, axis=1)
-    new_frame.loc[:, 'CH4_umolkg'] = df.apply(lambda x: determine_methane(apply_efficiency(x['gga']['CH4_ppm'], eff=meth_eff)*1e-6,
-                                                                          x['ctd']['Salinity'],
-                                                                          x['ctd']['Temperature'],
-                                                                          units='umolkg')*1e9, axis=1)
+    # new_frame.loc[:, 'CH4_umolkg'] = df.apply(lambda x: determine_methane(apply_efficiency(x['gga']['CH4_ppm'], eff=meth_eff)*1e-6,
+    #                                                                       x['ctd']['Salinity'],
+    #                                                                       x['ctd']['Temperature'],
+    #                                                                       units='umolkg')*1e9, axis=1)
 
-    new_frame.loc[:, 'O2'] = df['optode']['O2Concentration']
+    new_frame.loc[:, 'O2Concentration'] = df['optode']['O2Concentration']
     new_frame.loc[:, 'Longitude'] = df[geo_frame][geo_labels[0]]
     new_frame.loc[:, 'Latitude'] = df[geo_frame][geo_labels[1]]
     new_frame.loc[:, 'Temperature'] = df['ctd']['Temperature']

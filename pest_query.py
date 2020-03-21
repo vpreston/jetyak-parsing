@@ -15,6 +15,7 @@ import matplotlib
 import gpxpy
 import pandas as pd
 import copy
+import gsw
 import matplotlib.pyplot as plt
 from mpl_toolkits.basemap import Basemap
 import mpl_toolkits.basemap as mb
@@ -47,6 +48,13 @@ def lon2str(deg):
             min -= 60.0
         dir = 'W'
     return ("%d$\degree$ %g'") % (np.abs(deg),np.abs(min))
+
+def calc_salinity(temp, conduc):
+	pressure = 0.1
+	salt = gsw.SP_from_C(conduc, temp, pressure)
+	return salt
+
+
 
 if __name__ == '__main__':
 
@@ -199,25 +207,56 @@ if __name__ == '__main__':
     plt.close()
 
     ####################################################
-    ###### Make a mission "analyzing" JetYak ###########
+    ###### Make a PEST Version of Everything ###########
     ####################################################
-    # Data to access
-    # base_path = '/home/vpreston/Documents/IPP/jetyak_parsing/missions/falkor/'
-    # miss = ['Falkor_0913.csv', 'Falkor_0914.csv', 'Falkor_0916.csv']
-    # matplotlib.rcParams['figure.figsize'] = (15,15)
-    # matplotlib.rcParams['font.size'] = 18
-    # matplotlib.rcParams['figure.titlesize'] = 24
-    # # matplotlib.rcParams['axes.grid'] = True
-    # matplotlib.rcParams['axes.labelsize'] = 24
-    # matplotlib.rcParams['legend.fontsize'] = 18
-    # matplotlib.rcParams['grid.color'] = 'k'
-    # matplotlib.rcParams['grid.linestyle'] = ':'
-    # matplotlib.rcParams['grid.linewidth'] = 0.5
 
-    # # Create mission operator
-    # jy = jetyak.JetYak()
-    # # jy.load_mission([base_path+m for m in miss], header=[0,1], meth_eff=0.1254)
-    # # jy.save_mission(base_path, mission_name='trimmed')
 
-    # # jy = jetyak.JetYak()
-    # jy.load_mission([base_path+'trimmed_0.csv', base_path+'trimmed_2.csv'], header=0, simplify_mission=False)
+    #read in Noa's PEST file
+    pest_path = '/home/vpreston/Documents/field_work/pest/'
+    pixhawk = base_path + 'pix_log17.gpx'
+    suite = base_path + 'LOG99.txt'
+    pest = pd.read_table(suite, delimiter=',', header=0, engine='c')
+    pest.Year = pest.Year.values - 3
+    pest.Month = pest.Month.values - 5
+    pest.Day = pest.Day.values - 9
+    pest.Hour = pest.Hour.values - 11
+    pest = sensors.make_global_time(pest)
+    pest.loc[:, 'Salinity'] = pest.apply(lambda x: calc_salinity(x['Temperature'], x['Conductivity']/1000), axis=1)
+    print pest.Salinity.values
+    sal = [np.round(x, 3) for x in pest.Salinity.values]
+    np.savetxt('pest_salinity.txt', sal, fmt='%s')
+    plt.scatter(pest.index, pest['Salinity'])
+    plt.show()
+    plt.close()
+
+    pix = gpxpy.parse(open(pixhawk))
+    track = pix.tracks[0]
+    segment = track.segments[0]
+    data = []
+    for i, point in enumerate(segment.points):
+    	data.append([point.longitude, point.latitude, point.elevation, point.time])
+
+    pixdf = pd.DataFrame(data, columns=['Longitude', 'Latitude', 'Elevation', 'Time'])
+    data = copy.copy(pixdf)
+    data.loc[:, 'Year'] = data.apply(lambda x: x['Time'].year, axis=1)
+    data.loc[:, 'Month'] = data.apply(lambda x: x['Time'].month, axis=1)
+    data.loc[:, 'Day'] = data.apply(lambda x: x['Time'].day, axis=1)
+    data.loc[:, 'Hour'] = data.apply(lambda x: x['Time'].hour, axis=1)
+    data.loc[:, 'Minute'] = data.apply(lambda x: x['Time'].minute, axis=1)
+    data.loc[:, 'Second'] = data.apply(lambda x: x['Time'].second, axis=1)
+    data = sensors.make_global_time(data)
+    pixdf = data
+
+    dfs = [pest.drop_duplicates(subset='Julian_Date', keep='last').set_index('Julian_Date'),
+           pixdf.drop_duplicates(subset='Julian_Date', keep='last').set_index('Julian_Date')]
+    temp = pd.concat(dfs, axis=1, keys=['pest', 'pix'])
+    inter_temp = temp.interpolate()
+    df_index = dfs[1].index
+    pest_df = inter_temp.loc[df_index]
+
+
+    print pest_df.head(3)
+
+    plt.scatter(pest_df['pix']['Longitude'], pest_df['pix']['Latitude'], c=pest_df['pest']['Salinity'], cmap='coolwarm')
+    plt.show()
+    plt.close()

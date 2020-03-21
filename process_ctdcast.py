@@ -9,9 +9,9 @@ def convert_CH4(x, eff=0.15, peq=495.):
     ui = peq * gppm / 1000.
     return (x * peq / 1000. - ui) / eff + ui
 
-def apply_efficiency(x, eff=0.15, gppm=1.86):
+def apply_efficiency(x, eff=0.15, gppm=1.86, peq=495.):
     '''Method for applying the extraction efficiency'''
-    return (x-gppm)/eff + gppm
+    return ((x-gppm)/eff + gppm) * (peq/1000.)
 
 CTD22_meth = [3.5518, 3.1656, 3.0464, 3.2566, 2.9212, 2.3416, 2.1555, 2.2008]
 CTD22_temp = [9.3, 9.5, 10, 10.5, 10.8, 11.8, 13.4, 13.3]
@@ -280,10 +280,10 @@ CTD25_meth_standard_uatm = convert_CH4(CTD25_meth_standard, eff=1.0)/0.000001
                        
 nm = []
 
-# CTD22_meth_uatm = [apply_efficiency(x)*0.000001 for x in CTD22_meth]
-CTD25_meth_uatm = [apply_efficiency(x)*0.000001 for x in CTD25_meth]
-# CTD23_meth_uatm = [apply_efficiency(x)*0.000001 for x in CTD23_meth]
-# CTD24_meth_uatm = [apply_efficiency(x)*0.000001 for x in CTD24_meth]
+# CTD22_meth_uatm = [apply_efficiency(x, eff=0.0509)*0.000001 for x in CTD22_meth]
+CTD25_meth_uatm = [apply_efficiency(x, eff=0.0509)*0.000001 for x in CTD25_meth]
+# CTD23_meth_uatm = [apply_efficiency(x, eff=0.0509)*0.000001 for x in CTD23_meth]
+# CTD24_meth_uatm = [apply_efficiency(x, eff=0.0509)*0.000001 for x in CTD24_meth]
 
 # for m, t, s, d in zip(CTD22_meth_uatm, CTD22_temp, CTD22_salt, CTD22_depth):
 #     nm.append(sol.sol_SP_pt(s, t, gas='CH4', p_dry=m, units='mM')/0.000001)

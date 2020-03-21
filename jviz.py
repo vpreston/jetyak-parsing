@@ -83,7 +83,7 @@ def compare_samples(jy, target='CH4', geo_epsilon=5.0, depth_epsilon=0.1, save_p
     for i,j in zip(jy_mid, jy_sid): 
         make_plot(avg_samples, bottle_id, i, j, xlabel, labs[i-jy_mid[0]], title)
 
-def st_plots(salt, temp, target, target_label, title):
+def st_plots(salt, temp, target, target_label, title, ax=None):
     ''' Casts plots in S-T space '''
 
     # Figure set-up
@@ -121,8 +121,10 @@ def st_plots(salt, temp, target, target_label, title):
     cbar = plt.colorbar(m)
     cbar.set_label(target_label)
 
-    plt.show()
-    plt.close()
+    return m
+
+    # plt.show()
+    # plt.close()
 
 def val_depth_cascades(missions, depth_diff=0.5, limit=10.0, dates=('28 Jun', '29 Jun', '30 Jun', '01 Jul', '02 Jul', '04 Jul')):
     ''' aggregates data by depth and date '''
