@@ -203,6 +203,21 @@ if __name__ == '__main__':
     print np.nanmin(dtemp['CH4_ppm'].values)
     # asasd
 
+    print '------Yachats Stats-------'
+    yachats = jy.mission[0]
+    yachats_5m = yachats[(yachats['Depth'] < 5.0) & (yachats['Depth'] > 0.5)]['CH4_nM'].values
+    print '5 meter max, min, mean, std: ', np.nanmax(yachats_5m), np.nanmin(yachats_5m), np.nanmean(yachats_5m), np.nanstd(yachats_5m)
+    yachats_1m = yachats[(yachats['Depth'] < 1.5) & (yachats['Depth'] > 0.5)]['CH4_nM'].values
+    print '1.5 meter max, min, mean, std: ', np.nanmax(yachats_1m), np.nanmin(yachats_1m), np.nanmean(yachats_1m), np.nanstd(yachats_1m)
+    print '------Stonewall Bank Stats-------'
+    stonewall = jy.mission[1]
+    stonewall_5m = stonewall[(stonewall['Depth'] < 5.0) & (stonewall['Depth'] > 0.5)]['CH4_nM'].values
+    print '5 meter max, min, mean, std: ', np.nanmax(stonewall_5m), np.nanmin(stonewall_5m), np.nanmean(stonewall_5m), np.nanstd(stonewall_5m)
+    stonewall_1m = stonewall[(stonewall['Depth'] < 1.5) & (stonewall['Depth'] > 0.5)]['CH4_nM'].values
+    print '1.5 meter max, min, mean, std: ', np.nanmax(stonewall_1m), np.nanmin(stonewall_1m), np.nanmean(stonewall_1m), np.nanstd(stonewall_1m)
+
+    assd
+
     all_dist = []
     num_samples = 0
     for m in jy.mission:

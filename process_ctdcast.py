@@ -281,18 +281,18 @@ CTD25_meth_standard_uatm = convert_CH4(CTD25_meth_standard, eff=1.0)/0.000001
 nm = []
 
 # CTD22_meth_uatm = [apply_efficiency(x, eff=0.0509)*0.000001 for x in CTD22_meth]
-CTD25_meth_uatm = [apply_efficiency(x, eff=0.0509)*0.000001 for x in CTD25_meth]
-# CTD23_meth_uatm = [apply_efficiency(x, eff=0.0509)*0.000001 for x in CTD23_meth]
+# CTD25_meth_uatm = [apply_efficiency(x, eff=0.0509)*0.000001 for x in CTD25_meth]
+CTD23_meth_uatm = [apply_efficiency(x, eff=0.0509)*0.000001 for x in CTD23_meth]
 # CTD24_meth_uatm = [apply_efficiency(x, eff=0.0509)*0.000001 for x in CTD24_meth]
 
 # for m, t, s, d in zip(CTD22_meth_uatm, CTD22_temp, CTD22_salt, CTD22_depth):
 #     nm.append(sol.sol_SP_pt(s, t, gas='CH4', p_dry=m, units='mM')/0.000001)
 
-for m, t, s, d in zip(CTD25_meth_uatm, CTD25_temp, CTD25_salt, CTD25_depth):
-    nm.append(sol.sol_SP_pt(s, t, gas='CH4', p_dry=m, units='mM')/0.000001)
-
-# for m, t, s, d in zip(CTD23_meth_uatm, CTD23_temp, CTD23_salt, CTD23_depth):
+# for m, t, s, d in zip(CTD25_meth_uatm, CTD25_temp, CTD25_salt, CTD25_depth):
 #     nm.append(sol.sol_SP_pt(s, t, gas='CH4', p_dry=m, units='mM')/0.000001)
+
+for m, t, s, d in zip(CTD23_meth_uatm, CTD23_temp, CTD23_salt, CTD23_depth):
+    nm.append(sol.sol_SP_pt(s, t, gas='CH4', p_dry=m, units='mM')/0.000001)
 
 # for m, t, s, d in zip(CTD24_meth_uatm, CTD24_temp, CTD24_salt, CTD24_depth):
 #     nm.append(sol.sol_SP_pt(s, t, gas='CH4', p_dry=m, units='mM')/0.000001)
@@ -302,3 +302,6 @@ print nm
 # temp = convert_CH4(1.86, eff=1.0)/0.000001
 # print sol.sol_SP_pt(31.39, 15.5, gas='CH4', p_dry=temp, units='mM')*0.000001
 # print sol.sol_SP_pt(31.39, 15.5, gas='CH4', p_dry=1.84, units='mM')*0.000001
+
+temp = convert_CH4(20, eff=1.0)/0.000001
+print sol.sol_SP_pt(10, 17, gas='CH4', p_dry=temp, units='mM') * 0.000001

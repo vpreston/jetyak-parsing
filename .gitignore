@@ -6,6 +6,7 @@ missions/*
 *.qpj
 *.shx
 *.shp
+*.txt
 all_missions.py
 mission_query.py
 .~lock*
