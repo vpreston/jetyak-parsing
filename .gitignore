@@ -1,4 +1,4 @@
-missions/*
+examples/missions/*
 *.pyc
 *.csv
 *.dbf
@@ -7,6 +7,4 @@ missions/*
 *.shx
 *.shp
 *.txt
-all_missions.py
-mission_query.py
 .~lock*
