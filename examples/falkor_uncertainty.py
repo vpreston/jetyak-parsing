@@ -1,29 +1,18 @@
-#!/usr/env/python
+#!/usr/env/python3
 
 '''
-This is an example in which all JetYak data collected is compiled.
+Script which reads in Falkor mission data and estimates the extraction efficiency of the
+gas sensor based on data readings.
 
 Maintainer: vpreston-at-{whoi, mit}-dot-edu
 '''
 
 import numpy as np
-import jetyak
-import jviz
-import shapefile
-import matplotlib
-import matplotlib.pyplot as plt
-from mpl_toolkits.basemap import Basemap
-import mpl_toolkits.basemap as mb
-from mpl_toolkits.mplot3d import Axes3D
-import seaborn as sns
-from matplotlib.mlab import griddata
+from parseyak import jetyak
 import utm
-import matplotlib.gridspec as gridspec
-from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
-from matplotlib.ticker import LogFormatter
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from gasex import airsea
 from gasex.diff import schmidt
+import matplotlib.pyplot as plt
 
 def lat2str(deg):
     min = 60 * (deg - np.floor(deg))
@@ -75,120 +64,51 @@ def print_stats(ds):
     mean = np.nanmean(ds)
     std = np.nanstd(ds)
 
-    print 'Minimum', mini
-    print 'Maximum', maxi
-    print 'Median: ', med
-    print 'IQR: ', q25, q75, iqr
-    print 'Mean: ', mean
-    print 'Stdev: ', std
+    print('Minimum', mini)
+    print('Maximum', maxi)
+    print('Median: ', med)
+    print('IQR: ', q25, q75, iqr)
+    print('Mean: ', mean)
+    print('Stdev: ', std)
 
     return mini, maxi, q25, med, q75, iqr, mean, std
 
 if __name__ == '__main__':
-
-    ####################################################
-    ###### Mission Data and Params #####################
-    ####################################################
-
-    ###### Falkor Raw Data and Cleaning Params #######
-    # base_path = '/home/vpreston/Documents/field_work/falkor_cruise_2018/Falkor-09.2018/09.13.2018/data/'
-    # ctd_dirs = [base_path + 'ctd/rbr_20180914005320.txt']
-    # gga_dirs = [base_path + 'gga/gga_20180914005646.txt']
-    # airmar_dirs = [base_path + 'airmar/airmar_20180914005404.txt']
-    # optode_dirs = [base_path + 'op/optode_20180914005425.txt']
-    # mission_name = 'Falkor_0913.csv'
-    # trim_values = None
-    # bounds = None
-    # offset = 2440587.6705
-
-    # base_path = '/home/vpreston/Documents/field_work/falkor_cruise_2018/Falkor-09.2018/09.14.2018/data/'
-    # ctd_dirs = [base_path + 'ctd/rbr.txt']
-    # airmar_dirs = [base_path + 'airmar/airmar_20180915023820.txt', base_path + 'airmar/airmar_20180915030636.txt', base_path + 'airmar/airmar_20180915050321.txt']
-    # gga_dirs = [base_path + 'gga/gga_20180915023928.txt', base_path + 'gga/gga_20180915030848.txt', base_path + 'gga/gga_20180915050416.txt']
-    # optode_dirs = [base_path + 'op/optode_20180915023956.txt', base_path + 'op/optode_20180915030827.txt', base_path + 'op/optode_20180915050341.txt']
-    # mission_name = 'Falkor_0914.csv'
-    # trim_values = None
-    # bounds = None
-    # offset = 2440587.498
-
-    # base_path = '/home/vpreston/Documents/field_work/falkor_cruise_2018/Falkor-09.2018/09.16.2018/data/'
-    # ctd_dirs = [base_path + 'ctd/data.txt']
-    # airmar_dirs = [base_path + 'airmar/airmar_20180917042510.txt']
-    # gga_dirs = [base_path + 'gga/gga_20180917042451.txt']
-    # optode_dirs = [base_path + 'op/optode_20180917042535.txt']
-    # mission_name = 'Falkor_0916.csv'
-    # trim_values = None
-    # bounds = None
-    # offset = 2440587.503
-
-
-    ####################################################
-    ###### Make a "mission" JetYak #####################
-    ####################################################
-    # jy = jetyak.JetYak(trim_vals=trim_values, bounds=bounds, args=[offset])
-    # jy.attach_sensor('ctd', ctd_dirs)
-    # jy.attach_sensor('gga', gga_dirs)
-    # jy.attach_sensor('airmar', airmar_dirs)
-    # jy.attach_sensor('optode', optode_dirs)
-
-
-    # # # Can now perform work with the sensors
-    # jy.create_mission({'geoframe':'airmar'})
-    # jy.save_mission('/home/vpreston/Documents/IPP/jetyak_parsing/missions/falkor/', mission_name=mission_name)
-    # print jy.mission[0].head(5)
-
-    ####################################################
-    ###### Make a mission "analyzing" JetYak ###########
-    ####################################################
     # Data to access
-    base_path = '/home/vpreston/Documents/IPP/jetyak_parsing/missions/falkor/'
+    base_path = './missions/falkor/'
     miss = ['Falkor_0913.csv', 'Falkor_0914.csv', 'Falkor_0916.csv']
 
     # Create mission operator
-    # jy = jetyak.JetYak()
-    # jy.load_mission([base_path+m for m in miss], header=[0,1], meth_eff=0.0509)
-    # jy.save_mission(base_path, mission_name='trimmed_arctic')
-
     jy = jetyak.JetYak()
     jy.load_mission([base_path+'trimmed_arctic_0.csv', base_path+'trimmed_arctic_2.csv'], header=0, simplify_mission=False)
 
-    # Inspect raw ppm values
+    # Get the surface values of interest
     jy_mission_a = jy.mission[0][(jy.mission[0]['Depth'] <= 1.5) & (jy.mission[0]['Depth'] > 0.1)]
     jy_mission_b = jy.mission[1][(jy.mission[1]['Depth'] <= 1.5) & (jy.mission[1]['Depth'] > 0.1)]
 
+    # Pull A (Yachats) and B (Stonewall) site gas, salinity, and temp values
     a_ch4_ppm = jy_mission_a['CH4_ppm'].values
     a_sal = list(jy_mission_a['Salinity'].values)
     a_temp = list(jy_mission_a['Temperature'].values)
-
 
     b_ch4_ppm = jy_mission_b['CH4_ppm'].values
     b_sal = list(jy_mission_b['Salinity'].values)
     b_temp = list(jy_mission_b['Temperature'].values)
 
-
+    # Pull data from both sites
     all_ch4_ppm = list(a_ch4_ppm) + list(b_ch4_ppm)
     all_sal = list(jy_mission_a['Salinity'].values) + list(jy_mission_b['Salinity'].values)
     all_temp = list(jy_mission_a['Temperature'].values) + list(jy_mission_b['Temperature'].values)
 
-    print 'Yachats: '
+    # Print base statistics for each site
+    print('Yachats: ')
     a_mini, a_maxi, a_q25, a_med, a_q75, a_iqr, a_mean, a_std = print_stats(a_ch4_ppm)
-    print '----------'
-    print 'Stonewall: '
+    print('----------')
+    print('Stonewall: ')
     b_mini, b_maxi, b_q25, b_med, b_q75, b_iqr, b_mean, b_std = print_stats(b_ch4_ppm)
-    print '----------'
-    print 'All: '
+    print('----------')
+    print('All: ')
     mini, maxi, q25, med, q75, iqr, mean, std = print_stats(all_ch4_ppm)
-
-
-    # sns.distplot(a_ch4_ppm, label='Yachats', kde=False, bins=50,
-    #              hist_kws=dict(log=True, range=(np.nanmin(a_ch4_ppm), np.nanmax(a_ch4_ppm))))
-    # sns.distplot(b_ch4_ppm, label='Yachats', kde=False, bins=50,
-    #              hist_kws=dict(log=True, range=(np.nanmin(b_ch4_ppm), np.nanmax(b_ch4_ppm))))
-    # plt.show()
-
-    # sns.distplot(all_ch4_ppm, label='Yachats', kde=False, bins=50,
-    #              hist_kws=dict(log=True, range=(np.nanmin(all_ch4_ppm), np.nanmax(all_ch4_ppm))))
-    # plt.show()
 
     # calculate extraction efficiency for set ppm and equilibrium value
     gppm = 1.86 #atmo levels
@@ -204,16 +124,16 @@ if __name__ == '__main__':
     f = jetyak.determine_methane
 
     while err > tol:
-        print err
+        print(err)
         slope = (f(sal=sal, temp=temp, fCH4=x+0.01, units='mM') - f(sal=sal, temp=temp, fCH4=x-0.01, units='mM'))/0.02
         x = x - (jetyak.determine_methane(sal=sal, temp=temp, fCH4=x, units='mM')-2.7*1e-6)/slope
         err = np.abs(2.7*1e-6 - f(sal=sal, temp=temp, fCH4=x, units='mM'))
 
     eff = (y - gppm)/(1000*x/peq*1e6 - gppm)
-    print eff
-    print f(jetyak.apply_efficiency(y, eff=eff)*1e-6, sal=sal, temp=temp)*1e6
+    print(eff)
+    print(f(jetyak.apply_efficiency(y, eff=eff)*1e-6, sal=sal, temp=temp)*1e6)
 
-    print '-----'
+    print('-----')
 
     err = 1000
     eff = 0.01
@@ -232,7 +152,7 @@ if __name__ == '__main__':
 
         err = np.abs(2.7 - medi)
 
-    print eff
+    print(eff)
 
 
 

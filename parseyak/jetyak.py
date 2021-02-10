@@ -6,7 +6,7 @@ Creates JetYak Class which contains various sensors, and allows for operations b
 Maintainer: vpreston-at-{whoi, mit}-dot-edu
 '''
 
-import sensors
+import parseyak.sensors
 import pandas as pd
 import numpy as np
 import copy
@@ -42,60 +42,60 @@ class JetYak(object):
     def attach_sensor(self, sensor, dirs):
         ''' Method to add sensors for parsing and cleaning on the Jetyak '''
         if 'ctd' in sensor:
-            print 'Attaching CTD'
+            print('Attaching CTD')
             self.ctd = sensors.CTD(dirs, self.bounds, self.trim_vals)
             self.ctd.clean_ctd()
             self.sensors.append(self.ctd)
             self.sensor_names.append('ctd')
         elif 'gga' in sensor:
-            print 'Attaching GGA'
+            print('Attaching GGA')
             self.gga = sensors.GGA(dirs, self.bounds, self.trim_vals)
             self.gga.set_characteristics(offset=self.gga_offset)
             self.gga.clean_gga()
             self.sensors.append(self.gga)
             self.sensor_names.append('gga')
         elif 'airmar' in sensor:
-            print 'Attaching AirMar'
+            print('Attaching AirMar')
             self.airmar = sensors.AirMar(dirs, self.bounds, self.trim_vals)
             self.airmar.clean_airmar()
             self.sensors.append(self.airmar)
             self.sensor_names.append('airmar')
         elif 'pixhawk' in sensor:
-            print 'Attaching Pixhawk'
+            print('Attaching Pixhawk')
             self.pixhawk = sensors.Pixhawk(dirs, self.bounds, self.trim_vals)
             self.pixhawk.clean_pixhawk()
             self.sensors.append(self.pixhawk)
             self.sensor_names.append('pixhawk')
         elif 'mini_optode' in sensor:
-            print 'Attaching Mini_Optode'
+            print('Attaching Mini_Optode')
             self.mini_optode = sensors.MiniOptode(dirs, self.bounds, self.trim_vals)
             self.mini_optode.set_characteristics(offset=self.offset)
             self.mini_optode.clean_mini_optode()
             self.sensors.append(self.mini_optode)
             self.sensor_names.append('mini_optode')
         elif 'optode' in sensor:
-            print 'Attaching Optode'
+            print('Attaching Optode')
             self.optode = sensors.Optode(dirs, self.bounds, self.trim_vals)
             self.optode.set_characteristics(offset=self.offset)
             self.optode.clean_optode()
             self.sensors.append(self.optode)
             self.sensor_names.append('optode')
         elif 'phone_gps' in sensor:
-            print 'Attaching Phone GPS'
+            print('Attaching Phone GPS')
             self.phone_gps = sensors.PhoneGPS(dirs, self.bounds, self.trim_vals)
             # self.optode.set_characteristics(offset=self.offset)
             self.phone_gps.clean_phone_gps()
             self.sensors.append(self.phone_gps)
             self.sensor_names.append('phone_gps')
         elif 'sonde' in sensor:
-            print 'Attaching Sonde'
+            print('Attaching Sonde')
             self.sonde = sensors.Sonde(dirs, self.bounds, self.trim_vals)
             self.sonde.clean_sonde()
             self.sensors.append(self.sonde)
             self.sensor_names.append('sonde')
         else:
-            print 'Only supporting CTD, GGA, Optode, Mini-Optode, Airmar, and Phone GPS inputs \
-                       at this time.'
+            print('Only supporting CTD, GGA, Optode, Mini-Optode, Airmar, and Phone GPS inputs \
+                       at this time.')
 
     def create_mission(self, args):
         '''Method to combine (geo associate and time associate) all valid sensor signals.
@@ -292,7 +292,7 @@ class JetYak(object):
                     'salinity', 'temperature', 'depth')]
         for i, day in enumerate([28, 29, 30, 1, 2]):
             samples = self.bottle_samples[self.bottle_samples['day'] == day]
-            print np.unique(samples['day'].values)
+            print(np.unique(samples['day'].values))
             methane = samples['[CH4] nM'].values
             co2 = samples['pCO2'].values
             lat = samples['lat'].values
@@ -361,7 +361,7 @@ def clean_samples(filepath):
 
 def strip_mission(df, geo_frame='airmar', geo_labels=('lon_mod', 'lat_mod'), meth_eff=0.03, carb_eff=0.70):
     ''' Creates simple frame of the relevant data of interest '''
-    print meth_eff
+    print(meth_eff)
     new_frame = pd.DataFrame()
     new_frame.loc[:, 'Year'] = df['ctd']['Year']
     new_frame.loc[:, 'Month'] = df['ctd']['Month']
@@ -404,7 +404,6 @@ def get_distance(coord1, coord2, limit):
         dist = (e1-e2)**2 + (n1-n2)**2
         if dist <= limit**2 is True:
             pass
-            # print coord1, coord2
         return dist <= limit**2
     except:
         return False
